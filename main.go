@@ -10,12 +10,10 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"time"
 )
 
 const BASE_PATH = "chemicals"
-const DEFAULT_SECONDS = 2
-const MAX_RUNNING = 10
+const DEFAULT_MAX_CONCURRENT = 4
 
 type downloadSeed struct {
 	Id   string
@@ -82,18 +80,31 @@ func downloadPDFToFile(url string, out *os.File) error {
 func main() {
 	ensureBaseDirectory()
 	seedLocation := flag.String("seed", "seed.json", "location for download seed json file")
-	timeToWait := flag.Int("interval", DEFAULT_SECONDS, "seconds to wait between downloading next pdf")
+	maxConcurrentDownloads := flag.Int("max-concurrent", DEFAULT_MAX_CONCURRENT, "maximum number of files to download at the same time")
 
 	flag.Parse()
+
+	if *maxConcurrentDownloads < 1 {
+		fmt.Println("minimum concurrent downloads is set to 1")
+		*maxConcurrentDownloads = 1
+	}
+
+	fmt.Printf("would permit %d", *maxConcurrentDownloads)
+
+	backpressure := make(chan bool, *maxConcurrentDownloads)
 
 	seed := loadSeedJSON(*seedLocation)
 
 	for _, chemical := range seed {
-		time.Sleep(time.Duration(*timeToWait) * time.Second)
-		fmt.Printf("Download: %s (%d of %d)\n", chemical.Name)
-		err := getChemicalFromSeed(chemical)
-		if err != nil {
-			fmt.Printf("failure: %s", chemical.Name)
-		}
+		backpressure <- true
+		go func(chemical downloadSeed, backpressure chan bool) {
+			fmt.Printf("downloading: %s\n", chemical.Name)
+			err := getChemicalFromSeed(chemical)
+			fmt.Printf("finished: %s\n", chemical.Name)
+			if err != nil {
+				fmt.Printf("failure: %s", chemical.Name)
+			}
+			<-backpressure
+		}(chemical, backpressure)
 	}
 }
