@@ -85,11 +85,11 @@ func main() {
 	flag.Parse()
 
 	if *maxConcurrentDownloads < 1 {
-		fmt.Println("minimum concurrent downloads is set to 1")
+		fmt.Println("minimum concurrent downloads is defaulting to 1\n")
 		*maxConcurrentDownloads = 1
 	}
 
-	fmt.Printf("would permit %d", *maxConcurrentDownloads)
+	fmt.Printf("maximum concurrent downloads set to: %d\n", *maxConcurrentDownloads)
 
 	backpressure := make(chan bool, *maxConcurrentDownloads)
 
@@ -98,11 +98,9 @@ func main() {
 	for _, chemical := range seed {
 		backpressure <- true
 		go func(chemical downloadSeed, backpressure chan bool) {
-			fmt.Printf("downloading: %s\n", chemical.Name)
 			err := getChemicalFromSeed(chemical)
-			fmt.Printf("finished: %s\n", chemical.Name)
 			if err != nil {
-				fmt.Printf("failure: %s", chemical.Name)
+				fmt.Printf("could not download: %s\n", chemical.Name)
 			}
 			<-backpressure
 		}(chemical, backpressure)
